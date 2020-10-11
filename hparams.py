@@ -1,11 +1,11 @@
-import tensorflow as tf
+from tensor2tensor.utils.hparam import HParams
 from text import symbols
 
 
 def create_hparams(hparams_string=None, verbose=False):
     """Create model hyperparameters. Parse nondefault from given string."""
 
-    hparams = tf.contrib.training.HParams(
+    hparams = HParams(
         ################################
         # Experiment Parameters        #
         ################################
@@ -44,6 +44,7 @@ def create_hparams(hparams_string=None, verbose=False):
         ################################
         # Model Parameters             #
         ################################
+        sigmoid_noise=2.0,
         n_symbols=len(symbols),
         symbols_embedding_dim=512,
 
@@ -86,10 +87,6 @@ def create_hparams(hparams_string=None, verbose=False):
     )
 
     if hparams_string:
-        tf.logging.info('Parsing command line hparams: %s', hparams_string)
         hparams.parse(hparams_string)
-
-    if verbose:
-        tf.logging.info('Final parsed hparams: %s', hparams.values())
 
     return hparams
