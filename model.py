@@ -54,7 +54,7 @@ class StepwiseMonotonicAttention(nn.Module):
         if sigmoid_noise > 0:
             noise = torch.randn(
                 score.shape, device=score.device, dtype=score.dtype)
-            score += sigmoid_noise * noise
+            score = score + sigmoid_noise * noise
         if hard_attention:
             # When mode is hard, use a hard sigmoid
             p_choose_i = (score > 0.).to(score.dtype)
@@ -65,8 +65,8 @@ class StepwiseMonotonicAttention(nn.Module):
         return alignments
 
     def get_alignment_energies(self, query, processed_memory, previous_alignments):
-        processed_query = self.query_layer(query.unsqueeze(1)).expand_as(
-            processed_memory)  # [B, enc_T, attention_dim]
+        processed_query = self.query_layer(query).unsqueeze(
+            1).expand(-1, processed_memory.size(1), -1)  # [B, enc_T, attention_dim]
         # [B, enc_T, attention_dim]               # unsqueeze, matmul, expand_as
         score = self.v(torch.tanh(processed_query + processed_memory)).squeeze(
             2)  # [B, enc_T, attention_dim] -> [B, enc_T]
