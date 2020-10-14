@@ -79,12 +79,12 @@ class StepwiseMonotonicAttention(nn.Module):
         alignment = self.get_alignment_energies(
             query, processed_memory, previous_alignments)
 
+        alignment = self._stepwise_monotonic_probability_fn(
+            alignment, previous_alignments, self.sigmoid_noise, self.use_hard_attention)
+
         if mask is not None:
             alignment.data.masked_fill_(
                 mask, self.score_mask_value)
-
-        alignments = self._stepwise_monotonic_probability_fn(
-            alignment, previous_alignments, self.sigmoid_noise, self.use_hard_attention)
 
         attention_context = torch.bmm(
             alignment.unsqueeze(1), memory).squeeze(1)
