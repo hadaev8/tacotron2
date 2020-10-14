@@ -11,7 +11,7 @@ from utils import to_gpu, get_mask_from_lengths
 class StepwiseMonotonicAttention(nn.Module):
     def __init__(self, query_dim, value_dim, attention_dim,
                  sigmoid_noise=2.0, score_bias_init=3.5,
-                 use_hard_attention=False, init_r=-4.0):
+                 use_hard_attention=False, attention_score_bias=-4.0):
         super(StepwiseMonotonicAttention, self).__init__()
         self.query_layer = LinearNorm(
             query_dim, attention_dim, bias=False, w_init_gain='tanh')
@@ -23,7 +23,8 @@ class StepwiseMonotonicAttention(nn.Module):
         self.use_hard_attention = use_hard_attention
         self.score_mask_value = 0.0
         self.sigmoid_noise = sigmoid_noise
-        self.r = nn.Parameter(torch.Tensor([init_r]))
+        self.attention_score_bias = nn.Parameter(
+            torch.Tensor([attention_score_bias]))
 
     def set_soft_attention(self):
         self.use_hard_attention = False
@@ -69,30 +70,26 @@ class StepwiseMonotonicAttention(nn.Module):
         processed_query = self.query_layer(query).unsqueeze(
             1).expand(-1, processed_memory.size(1), -1)
 
-        score = self.r + self.v(torch.tanh(processed_query + processed_memory)).squeeze(
-            2)
+        score = self.attention_score_bias + \
+            self.v(torch.tanh(processed_query + processed_memory)).squeeze(-1)
+
+        return score
+
+    def forward(self, query, memory, processed_memory, previous_alignments, mask):
+        alignment = self.get_alignment_energies(
+            query, processed_memory, previous_alignments)
+
+        if mask is not None:
+            alignment.data.masked_fill_(
+                mask, self.score_mask_value)
 
         alignments = self._stepwise_monotonic_probability_fn(
-            score, previous_alignments, self.sigmoid_noise, self.use_hard_attention)
-        return alignments
-
-    def forward(self, query, memory, processed_memory, previous_alignments,
-                mask, attention_weights=None):
-        if attention_weights is None:
-            alignment = self.get_alignment_energies(
-                query, processed_memory, previous_alignments)
-
-            if mask is not None:
-                alignment.data.masked_fill_(
-                    mask, self.score_mask_value)  # [B, enc_T]
+            alignment, previous_alignments, self.sigmoid_noise, self.use_hard_attention)
 
         attention_context = torch.bmm(
-            alignment.unsqueeze(1), memory)  # unsqueeze, bmm
-        # [B, 1, enc_T] @ [B, enc_T, enc_dim] -> [B, 1, enc_dim]
-        # [B, 1, enc_dim] -> [B, enc_dim] # squeeze
-        attention_context = attention_context.squeeze(1)
+            alignment.unsqueeze(1), memory).squeeze(1)
 
-        return attention_context, alignment  # [B, enc_dim], [B, enc_T]
+        return attention_context, alignment
 
 
 class Prenet(nn.Module):
