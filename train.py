@@ -132,7 +132,7 @@ def validate(model, criterion, valset, iteration, batch_size, n_gpus,
         for i, batch in enumerate(val_loader):
             x, y = model.parse_batch(batch)
             y_pred = model(x)
-            loss = criterion(y_pred, y)
+            loss = criterion(y_pred, y, x)
             if distributed_run:
                 reduced_val_loss = reduce_tensor(loss.data, n_gpus).item()
             else:
@@ -143,7 +143,7 @@ def validate(model, criterion, valset, iteration, batch_size, n_gpus,
     model.train()
     if rank == 0:
         print("Validation loss {}: {:9f}  ".format(iteration, val_loss))
-        logger.log_validation(val_loss, model, y, y_pred, iteration)
+        logger.log_validation(val_loss, model, y, y_pred[:-1], iteration)
 
 
 def train(output_directory, log_directory, checkpoint_path, warm_start, n_gpus,
@@ -178,7 +178,7 @@ def train(output_directory, log_directory, checkpoint_path, warm_start, n_gpus,
     if hparams.distributed_run:
         model = apply_gradient_allreduce(model)
 
-    criterion = Tacotron2Loss()
+    criterion = Tacotron2Loss(hparams)
 
     logger = prepare_directories_and_logger(
         output_directory, log_directory, rank)
@@ -210,11 +210,14 @@ def train(output_directory, log_directory, checkpoint_path, warm_start, n_gpus,
             for param_group in optimizer.param_groups:
                 param_group['lr'] = learning_rate
 
+            model.use_ctc = criterion.use_ctc
+
             model.zero_grad()
             x, y = model.parse_batch(batch)
             y_pred = model(x)
 
-            loss = criterion(y_pred, y)
+            loss = criterion(y_pred, y, x)
+
             if hparams.distributed_run:
                 reduced_loss = reduce_tensor(loss.data, n_gpus).item()
             else:

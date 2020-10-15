@@ -73,18 +73,20 @@ class StepwiseMonotonicAttention(nn.Module):
         score = self.attention_score_bias + \
             self.v(torch.tanh(processed_query + processed_memory)).squeeze(-1)
 
-        return score
+        alignments = self._stepwise_monotonic_probability_fn(
+            score, previous_alignments, self.sigmoid_noise, self.use_hard_attention)
+
+        return alignments
 
     def forward(self, query, memory, processed_memory, previous_alignments, mask):
         alignment = self.get_alignment_energies(
             query, processed_memory, previous_alignments)
 
-        alignment = self._stepwise_monotonic_probability_fn(
-            alignment, previous_alignments, self.sigmoid_noise, self.use_hard_attention)
-
         if mask is not None:
             alignment.data.masked_fill_(
                 mask, self.score_mask_value)
+
+        alignment = 2 * (torch.sigmoid(alignment * 2) - 0.5)
 
         attention_context = torch.bmm(
             alignment.unsqueeze(1), memory).squeeze(1)
@@ -465,6 +467,22 @@ class Decoder(nn.Module):
         return mel_outputs, gate_outputs, alignments
 
 
+class CTCEsitmator(nn.Module):
+    def __init__(self, vocab_size, inp_dim):
+        super(CTCEsitmator, self).__init__()
+
+        self.proj = LinearNorm(
+            inp_dim, vocab_size + 1, w_init_gain='linear')
+
+    def forward(self, x):
+
+        x = x.transpose(1, 2)
+        x = self.proj(x).log_softmax(
+            dim=-1).transpose(1, 0)
+
+        return x
+
+
 class Tacotron2(nn.Module):
     def __init__(self, hparams):
         super(Tacotron2, self).__init__()
@@ -480,6 +498,9 @@ class Tacotron2(nn.Module):
         self.encoder = Encoder(hparams)
         self.decoder = Decoder(hparams)
         self.postnet = Postnet(hparams)
+        self.ctc_estimator = CTCEsitmator(
+            hparams.n_symbols, hparams.n_mel_channels)
+        self.use_ctc = True
 
     def parse_batch(self, batch):
         text_padded, input_lengths, mel_padded, gate_padded, \
@@ -521,8 +542,13 @@ class Tacotron2(nn.Module):
         mel_outputs_postnet = self.postnet(mel_outputs)
         mel_outputs_postnet = mel_outputs + mel_outputs_postnet
 
+        if self.use_ctc:
+            ctc_out = self.ctc_estimator(mel_outputs)
+        else:
+            ctc_out = None
+
         return self.parse_output(
-            [mel_outputs, mel_outputs_postnet, gate_outputs, alignments],
+            [mel_outputs, mel_outputs_postnet, gate_outputs, alignments, ctc_out],
             output_lengths)
 
     def inference(self, inputs):
