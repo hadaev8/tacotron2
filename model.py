@@ -86,8 +86,6 @@ class StepwiseMonotonicAttention(nn.Module):
             alignment.data.masked_fill_(
                 mask, self.score_mask_value)
 
-        alignment = 2 * (torch.sigmoid(alignment * 2) - 0.5)
-
         attention_context = torch.bmm(
             alignment.unsqueeze(1), memory).squeeze(1)
 
