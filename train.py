@@ -88,7 +88,7 @@ def warm_start_model(checkpoint_path, model, ignore_layers):
     model_dict = checkpoint_dict['state_dict']
     if len(ignore_layers) > 0:
         model_dict = {k: v for k, v in model_dict.items()
-                      if k not in ignore_layers}
+                      if ignore_layers not in k}
         dummy_dict = model.state_dict()
         dummy_dict.update(model_dict)
         model_dict = dummy_dict
